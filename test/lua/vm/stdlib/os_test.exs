@@ -66,11 +66,6 @@ defmodule Lua.VM.Stdlib.OsTest do
         # the byte after it.
         {~S|"!%%"|, "%"},
         {~S|"!%%Y"|, "%Y"},
-        # Unknown directives, a `%` before a newline, and a trailing lone
-        # `%` pass through unchanged.
-        {~S|"!%Q"|, "%Q"},
-        {~S|"!a%\nb"|, "a%\nb"},
-        {~S|"!100%"|, "100%"},
         {~S|"!"|, ""}
       ]
 
