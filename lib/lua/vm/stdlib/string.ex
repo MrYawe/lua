@@ -443,15 +443,8 @@ defmodule Lua.VM.Stdlib.String do
     render_format(rest, remaining_args, [acc, piece], argn + 1, size, max_bytes)
   end
 
-  defp render_format(
-         [{:spec, {_flags, width, _precision, _specifier} = spec} | rest],
-         [arg | remaining_args],
-         acc,
-         argn,
-         size,
-         max_bytes
-       ) do
-    Limits.check_string_size!(size + (width || 0), max_bytes)
+  defp render_format([{:spec, spec} | rest], [arg | remaining_args], acc, argn, size, max_bytes) do
+    Limits.check_string_size!(size + padded_width(spec), max_bytes)
     piece = apply_format_spec(spec, arg)
     size = size + piece_size(piece)
     Limits.check_string_size!(size, max_bytes)
@@ -570,6 +563,11 @@ defmodule Lua.VM.Stdlib.String do
   # corrupt that literal, so %q never threads through the width/sign machinery
   # (PUC-Lua likewise refuses to apply modifiers to %q). Every other conversion
   # takes the padding pipeline below.
+  # Lower bound on a conversion's output from its width alone, known before the
+  # padding is built. %q ignores width, so it contributes nothing.
+  defp padded_width({_flags, _width, _precision, ?q}), do: 0
+  defp padded_width({_flags, width, _precision, _specifier}), do: width || 0
+
   defp apply_format_spec({_flags, _width, _precision, ?q}, arg) do
     format_quoted(arg)
   end

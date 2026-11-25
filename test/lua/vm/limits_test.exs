@@ -196,6 +196,12 @@ defmodule Lua.VM.LimitsTest do
       end
     end
 
+    test "string.format ignores width for %q when checking the ceiling" do
+      # %q never pads, so a wide field on a short string stays under the ceiling.
+      tiny = Lua.new(max_string_bytes: 10)
+      assert {["\"x\""], _} = Lua.eval!(tiny, ~s|return string.format("%99q", "x")|)
+    end
+
     test "string.pack honors a lowered ceiling", %{small: small} do
       # A fixed-size field is padded to its declared width.
       assert pcall_error(small, ~s|return string.pack("c2048", "")|) =~ "resulting string too large"
