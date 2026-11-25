@@ -419,26 +419,43 @@ defmodule Lua.VM.Stdlib.String do
   # appended as `[acc, piece]` (O(1) per step), materialized exactly once via
   # `IO.iodata_to_binary/1` at the base case.
   #
-  # `size` is the iolist's running byte count. The iolist only references its
-  # `%s` arguments, so one large string named many times costs nothing until
-  # that flatten; the base case refuses an oversized result before making it.
-  defp render_format([], _args, acc, _argn, size, max_bytes) do
-    Limits.check_string_size!(size, max_bytes)
+  # `size` is the iolist's running byte count, checked against `max_bytes` in
+  # every clause so a call is refused as soon as its output passes the
+  # ceiling, not after the rest of it has been built. A conversion that makes
+  # a fresh binary (width padding, a large `%f`, `%q` escaping) is held in the
+  # iolist until the flatten, so the check must come before the next piece is
+  # built. A padded field is at least `width` bytes, which is known before
+  # anything is built, so `%99s` is refused without making the padding.
+  defp render_format([], _args, acc, _argn, _size, _max_bytes) do
     IO.iodata_to_binary(acc)
   end
 
   defp render_format([{:lit, literal} | rest], args, acc, argn, size, max_bytes) do
-    render_format(rest, args, [acc, literal], argn, size + byte_size(literal), max_bytes)
+    size = size + byte_size(literal)
+    Limits.check_string_size!(size, max_bytes)
+    render_format(rest, args, [acc, literal], argn, size, max_bytes)
   end
 
   defp render_format([{:bare, c} | rest], [arg | remaining_args], acc, argn, size, max_bytes) do
     piece = convert_raw(c, arg, nil, 0, nil)
-    render_format(rest, remaining_args, [acc, piece], argn + 1, size + piece_size(piece), max_bytes)
+    size = size + piece_size(piece)
+    Limits.check_string_size!(size, max_bytes)
+    render_format(rest, remaining_args, [acc, piece], argn + 1, size, max_bytes)
   end
 
-  defp render_format([{:spec, spec} | rest], [arg | remaining_args], acc, argn, size, max_bytes) do
+  defp render_format(
+         [{:spec, {_flags, width, _precision, _specifier} = spec} | rest],
+         [arg | remaining_args],
+         acc,
+         argn,
+         size,
+         max_bytes
+       ) do
+    Limits.check_string_size!(size + (width || 0), max_bytes)
     piece = apply_format_spec(spec, arg)
-    render_format(rest, remaining_args, [acc, piece], argn + 1, size + piece_size(piece), max_bytes)
+    size = size + piece_size(piece)
+    Limits.check_string_size!(size, max_bytes)
+    render_format(rest, remaining_args, [acc, piece], argn + 1, size, max_bytes)
   end
 
   defp render_format([_segment | _], [], _acc, argn, _size, _max_bytes) do
